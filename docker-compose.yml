@@ -2,14 +2,22 @@ name: agentcloud
 
 services:
 
+  unstructured-api:
+    ports:
+        - 9500:9500
+    container_name: unstructured-api
+    environment:
+        - PORT=9500
+    image: localhost:5000/unstructured-api
+
   docker_rabbitmq:
     image: rabbitmq:3.13.1-management
     environment:
       RABBITMQ_DEFAULT_USER: guest
       RABBITMQ_DEFAULT_PASS: guest
     ports:
-      - "127.0.0.1:5672:5672"
-      - "127.0.0.1:15672:15672"
+      - "0.0.0.0:5672:5672"
+      - "0.0.0.0:15672:15672"
 
   docker_mongo:
     restart: always
@@ -21,6 +29,8 @@ services:
 
   docker_redis:
     restart: always
+    extra_hosts:
+      - "host.docker.internal:host-gateway"
     image: redis:latest
     ports:
       - "127.0.0.1:6379:6379"
@@ -37,9 +47,13 @@ services:
         # - NEXT_PUBLIC_ENABLE_GOOGLE_OAUTH=
         # - NEXT_PUBLIC_ENABLE_GITHUB_OAUTH=
         - NEXT_PUBLIC_GCS_BUCKET_NAME=${GCS_BUCKET_NAME}
+        - NEXT_PUBLIC_GCS_BUCKET_NAME_PRIVATE=${GCS_BUCKET_NAME_PRIVATE}
         - NEXT_PUBLIC_HUBSPOT_MEETING_LINK=https://meetings.hubspot.com/andrew520
-        - POSTHOG_KEY=
+        - NEXT_PUBLIC_STRIPE_PUBLISHABLE_KEY=pk_test_dodwg7nfg2hW2oTyLTiTb14L00vQvEUCYO
+        - NEXT_PUBLIC_POSTHOG_KEY=
         - GOOGLE_APPLICATION_CREDENTIALS=/app/keyfile.json
+        - NEXT_PUBLIC_STORAGE_PROVIDER=local
+        - NEXT_PUBLIC_LOCAL_UNSTRUCTURED=1
     ports:
       - "127.0.0.1:3000:3000"
     depends_on:
@@ -48,9 +62,8 @@ services:
       - docker_redis
     environment:
       - GOOGLE_APPLICATION_CREDENTIALS=/app/keyfile.json
-      - RABBITMQ_HOST=docker_rabbitmq
       - RABBITMQ_PORT=5672
-      - RABBITMQ_STREAM=streaming
+      - QUEUE_NAME=streaming
       - RABBITMQ_EXCHANGE=agentcloud
       - RABBITMQ_ROUTING_KEY=key
       - RABBITMQ_USERNAME=guest
@@ -66,39 +79,82 @@ services:
       - AGENT_BACKEND_SOCKET_TOKEN=changeme
       - PROJECT_ID=${PROJECT_ID}
       - FROM_EMAIL_ADDRESS=noreply@agentcloud.dev
+      - WEBAPP_WEBHOOK_HOST=http://webapp_next:3000
       - URL_APP=http://127.0.0.1:3000
       - DEBUG=webapp:*
       - STRIPE_WEBHOOK_SECRET=
       - STRIPE_ACCOUNT_SECRET=
       - NEXT_PUBLIC_GCS_BUCKET_NAME=${GCS_BUCKET_NAME}
+      - NEXT_PUBLIC_GCS_BUCKET_NAME_PRIVATE=${GCS_BUCKET_NAME_PRIVATE}
       - OAUTH_GITHUB_CLIENT_ID=
       - OAUTH_GITHUB_CLIENT_SECRET=
       - OAUTH_GOOGLE_CLIENT_ID=
       - OAUTH_GOOGLE_CLIENT_SECRET=
       - VECTOR_APP_URL=http://vector_db_proxy:9001
-      - AIRBYTE_WEB_URL=http://airbyte-proxy:8000
-      - AIRBYTE_API_URL=http://airbyte-proxy:8006
+      - AIRBYTE_WEB_URL=http://host.docker.internal:8000
+      - AIRBYTE_API_URL=http://host.docker.internal:8000
       - AIRBYTE_ADMIN_WORKSPACE_ID=${AIRBYTE_ADMIN_WORKSPACE_ID}
       - AIRBYTE_ADMIN_DESTINATION_ID=${AIRBYTE_ADMIN_DESTINATION_ID}
-      - AIRBYTE_USERNAME=airbyte
-      - AIRBYTE_PASSWORD=password
+      - AIRBYTE_USERNAME=${AIRBYTE_USERNAME:-airbyte}
+      - AIRBYTE_PASSWORD=${AIRBYTE_PASSWORD:-password}
+      - AIRBYTE_CLIENT_ID=${AIRBYTE_CLIENT_ID}
+      - AIRBYTE_CLIENT_SECRET=${AIRBYTE_CLIENT_SECRET}
+      - NEXT_PUBLIC_IS_AIRBYTE_ENABLED=false
       - GCS_BUCKET_NAME=${GCS_BUCKET_NAME}
       - GCS_BUCKET_LOCATION=${GCS_BUCKET_LOCATION}
       - STRIPE_FREE_PLAN_PRICE_ID=price_1P0zlRDxQ9GZKzvoYUAzWMSv
-      - STRIPE_PRO_PLAN_PRICE_ID=price_1OAMHSDxQ9GZKzvoBbDryhiZ
-      - STRIPE_TEAMS_PLAN_PRICE_ID=price_1P0xEGDxQ9GZKzvoTDfMJK6f
-      - STRIPE_ADDON_USERS_PRICE_ID=price_1PFnQmDxQ9GZKzvoS4cRlCtt
-      - STRIPE_ADDON_STORAGE_PRICE_ID=price_1PGClWDxQ9GZKzvoiB8SNOrV      
+      - STRIPE_PRO_PLAN_PRICE_ID=price_1PFrOlDxQ9GZKzvo7Pcb29jS
+      - STRIPE_TEAMS_PLAN_PRICE_ID=price_1PFrGKDxQ9GZKzvotx5U0JE5
+      - STRIPE_ADDON_USERS_PRICE_ID=price_1PFrRsDxQ9GZKzvoTFCE6YTz
+      - STRIPE_ADDON_STORAGE_PRICE_ID=price_1PGClWDxQ9GZKzvoiB8SNOrV
       - STRIPE_FREE_PLAN_PRODUCT_ID=prod_Pqh9LfvzCal4Ux
       - STRIPE_PRO_PLAN_PRODUCT_ID=prod_OyItEyf2n0TZGj
       - STRIPE_TEAMS_PLAN_PRODUCT_ID=prod_PqeXHjZLXeuzyr
       - STRIPE_ADDON_USERS_PRODUCT_ID=prod_PqgU2ZCIJqDDRf
       - STRIPE_ADDON_STORAGE_PRODUCT_ID=prod_Q6Pao7IJyTNLYv
+      - NEXT_PUBLIC_STRIPE_PUBLISHABLE_KEY=pk_test_dodwg7nfg2hW2oTyLTiTb14L00vQvEUCYO
       - NEXT_PUBLIC_STORAGE_PROVIDER=local
       - NEXT_PUBLIC_SECRET_PROVIDER=local
+      - MESSAGE_QUEUE_PROVIDER=rabbitmq
       - UPLOADS_BASE_PATH=/tmp
+      - NEXT_PUBLIC_LOCAL_UNSTRUCTURED=1
+      # Note: Only google cloud functions supported currently, so agent-backend doesn't need a provider env (YET)
+      - FUNCTION_PROVIDER=google
+      - GOOGLE_FUNCTION_LOCATION=us-central1
+      - SKIP_STRIPE=
+      - AIRBYTE_RABBITMQ_HOST=${AIRBYTE_RABBITMQ_HOST}
     volumes:
       - datasource_files:/tmp
+    extra_hosts:
+      - "host.docker.internal:host-gateway"
+
+  webapp_syncserver:
+    restart: always
+    build:
+      context: webapp/
+      dockerfile: Dockerfile_syncserver
+      args:
+        - GOOGLE_KEYPATH=keyfile.json
+        - GOOGLE_APPLICATION_CREDENTIALS=/app/keyfile.json
+    depends_on:
+      - docker_rabbitmq
+      - docker_mongo
+      - docker_redis
+    environment:
+      - GOOGLE_APPLICATION_CREDENTIALS=/app/keyfile.json
+      - NODE_ENV=development
+      - DB_URL=mongodb://docker_mongo:27017/test
+      - REDIS_HOST=docker_redis
+      - REDIS_PASS=
+      - DEBUG=webapp:*,sync-server:*
+      - VECTOR_APP_URL=http://vector_db_proxy:9001
+      - AIRBYTE_WEB_URL=http://airbyte-proxy:8000
+      - AIRBYTE_API_URL=http://airbyte-proxy:8006
+      - AIRBYTE_USERNAME=airbyte
+      - AIRBYTE_PASSWORD=password
+      - NEXT_PUBLIC_STORAGE_PROVIDER=local
+      - NEXT_PUBLIC_SECRET_PROVIDER=local
+      - MESSAGE_QUEUE_PROVIDER=rabbitmq
 
   agent_backend:
     restart: always
@@ -113,6 +169,7 @@ services:
     image: agent_backend
     volumes:
       - /var/run/docker.sock:/var/run/docker.sock
+      - datasource_files:/tmp
     environment:
       - LOCAL=True
       - MAX_THREADS=50
@@ -120,10 +177,21 @@ services:
       - SOCKET_URL=http://webapp_next:3000/
       - DB_URL=mongodb://docker_mongo:27017/test
       - REDIS_HOST=docker_redis
-      - QDRANT_HOST=qdrant
+      - QDRANT_HOST=http://qdrant
       - MONGO_DB_NAME=test
       - MAX_RETRIES=10
       - AGENT_BACKEND_SOCKET_TOKEN=changeme
+      # Note: Only google cloud functions supported currently, so agent-backend doesn't need a provider env (YET)
+      - FUNCTION_PROVIDER=google
+      # Notes: Modify the following google cloud storage values to use your own:
+      - GOOGLE_FUNCTION_LOCATION=us-central1
+      - GCS_BUCKET_NAME_PRIVATE=agentcloud-bucket-dev
+      - GCS_BUCKET_NAME=agentcloud-public-dev
+      - UPLOADS_BASE_PATH=/tmp
+      - GOOGLE_APPLICATION_CREDENTIALS=keyfile.json
+      - PROJECT_ID=agentcloud-dev
+      - STORAGE_PROVIDER=local
+      - WEBAPP_URL=http://localhost:3000/
 
   vector_db_proxy:
     restart: always
@@ -143,6 +211,7 @@ services:
       - HOST=0.0.0.0
       - PORT=9001
       - MONGO_URI=mongodb://docker_mongo:27017
+      - MONGO_DB_NAME=test
       - RABBITMQ_HOST=docker_rabbitmq
       - RABBITMQ_PORT=5672
       - RABBITMQ_STREAM=streaming
@@ -151,33 +220,44 @@ services:
       - RABBITMQ_USERNAME=guest
       - RABBITMQ_PASSWORD=guest
       - QDRANT_URI=http://qdrant:6334
+      - QDRANT_HOST=http://qdrant
+      - QDRANT_PORT=6334
       - REDIS_HOST=docker_redis
       - REDIS_PORT=6379
       - WEBAPP_HOST=webapp_next
       - THREAD_PERCENTAGE_UTILISATION=0.8
       - USE_GPU=false
-      - LOGGING_LEVEL=debug
+      - LOGGING_LEVEL=warn
+      - UNSTRUCTURED_API_URL=http://unstructured-api:9500/general/v0/general
 
     volumes:
       - datasource_files:/tmp
 
   qdrant:
     ports:
-      - '127.0.0.1:6333:6333'
-      - '127.0.0.1:6334:6334'
+      - '0.0.0.0:6333:6333'
+      - '0.0.0.0:6334:6334'
     image: qdrant/qdrant
     environment:
       - QDRANT__LOG_LEVEL=DEBUG
     volumes:
-      - qdrant_data:/qdrant_data
+      - qdrant_data:/qdrant_data 
+
+  # minio:
+  #   image: minio/minio
+  #   container_name: minio
+  #   ports:
+  #     - "9000:9000"
+  #   environment:
+  #     MINIO_ROOT_USER: "minioadmin"
+  #     MINIO_ROOT_PASSWORD: "minioadmin"
+  #   volumes:
+  #     - minio_data:/data
+  #   command: server /data
 
 volumes:
   mongodb_data_container:
   redis_data:
   datasource_files:
   qdrant_data:
-
-networks:
-  default:
-    external: true
-    name: airbyte_airbyte_internal
+  minio_data:

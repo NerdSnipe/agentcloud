@@ -8,3 +8,5 @@ keyfile.json
 doc/
 !src/lib/airbyte
 static/*
+tsconfig.tsbuildinfo
+coverage/

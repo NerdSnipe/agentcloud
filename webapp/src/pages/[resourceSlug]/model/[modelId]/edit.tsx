@@ -13,13 +13,18 @@ export default function EditModel(props) {
 	const { resourceSlug, modelId } = router.query;
 	const [state, dispatch] = useState(props);
 	const [error, setError] = useState();
-	const { model, credentials } = state;
+	const { model } = state;
 
 	async function fetchModelFormData() {
-		await API.getModel({
-			resourceSlug,
-			modelId,
-		}, dispatch, setError, router);
+		await API.getModel(
+			{
+				resourceSlug,
+				modelId
+			},
+			dispatch,
+			setError,
+			router
+		);
 	}
 
 	useEffect(() => {
@@ -27,7 +32,7 @@ export default function EditModel(props) {
 	}, [resourceSlug]);
 
 	if (model == null) {
-		return <Spinner/>;
+		return <Spinner />;
 	}
 
 	return (
@@ -37,22 +42,24 @@ export default function EditModel(props) {
 			</Head>
 
 			<div className='border-b pb-2 my-2 mb-6'>
-				<h3 className='font-semibold text-gray-900'>Edit Model</h3>
+				<h3 className='font-semibold text-gray-900 dark:text-white'>Edit Model</h3>
 			</div>
 
 			<span className='sm: w-full md:w-1/2 xl:w-1/3'>
-				<ModelForm
-					_model={model}
-					credentials={credentials}
-					fetchModelFormData={fetchModelFormData}
-					editing={true}
-				/>
+				<ModelForm _model={model} fetchModelFormData={fetchModelFormData} editing={true} />
 			</span>
-
 		</>
 	);
 }
 
-export async function getServerSideProps({ req, res, query, resolvedUrl, locale, locales, defaultLocale }) {
+export async function getServerSideProps({
+	req,
+	res,
+	query,
+	resolvedUrl,
+	locale,
+	locales,
+	defaultLocale
+}) {
 	return JSON.parse(JSON.stringify({ props: res?.locals?.data || {} }));
 }

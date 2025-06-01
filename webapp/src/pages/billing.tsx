@@ -1,217 +1,388 @@
 import * as API from '@api';
+import { loadStripe } from '@stripe/stripe-js';
+import ConfirmModal from 'components/ConfirmModal';
 import ErrorAlert from 'components/ErrorAlert';
+import InfoAlert from 'components/InfoAlert';
+import Invoice from 'components/Invoice';
+import ProgressBar from 'components/ProgressBar';
 import Spinner from 'components/Spinner';
+import StripeCheckoutModal from 'components/StripeCheckoutModal';
 import { useAccountContext } from 'context/account';
+import { Button } from 'modules/components/ui/button';
+import { Card, CardContent, CardHeader } from 'modules/components/ui/card';
 import Head from 'next/head';
-import Link from 'next/link';
 import { useRouter } from 'next/router';
+import { usePostHog } from 'posthog-js/react';
 import React, { useEffect, useState } from 'react';
 import { toast } from 'react-toastify';
-import { SubscriptionPlan } from 'struct/billing';
+import { pricingMatrix, SubscriptionPlan, subscriptionPlans as plans } from 'struct/billing';
+import { type Tool, ToolType } from 'struct/tool';
 
-function SubscriptionCard({ title, link = null, plan = null, price = null, description = null, icon = null, isPopular = false }) {
-	const router = useRouter();
-	const [accountContext]: any = useAccountContext();
-	const { csrf, account } = accountContext as any;
-	const { stripeCustomerId, stripePlan, stripeEndsAt, stripeTrial, stripeAddons } = account?.stripe || {};
-	const [selectedPlan, setSelectedPlan] = useState(stripePlan || SubscriptionPlan.PRO);
-	const currentPlan = plan === stripePlan;
-	const numberPrice = typeof price === 'number';
-	const [editedAddons, setEditedAddons] = useState(false);
+//DEVNOTE: see "src/lib/vectorproxy/client.ts" and "getVectorStorageForTeam", create an API route for this to get the used vector storage for this team. Once that's been retrieved use the stripe object to get the total avaiable storage and calculate the percentage
 
-	const [addons, setAddons] = useState({
-		users: stripeAddons?.users || 0,
-		storage: stripeAddons?.storage || 0,
-	});
-	
-	useEffect(() => {
-		const edited = addons?.users != stripeAddons.users
-			|| addons?.storage != stripeAddons.storage;
-		setEditedAddons(edited);
-	}, [addons?.users, addons?.storage]);
+const stripePromise = loadStripe(process.env.NEXT_PUBLIC_STRIPE_PUBLISHABLE_KEY);
 
-	const handleIncrement = (key) => {
-		setAddons((prev) => ({
-			...prev,
-			[key]: prev[key] + 1,
-		}));
-	};
+const pricingPlans = [
+	{
+		name: 'Free',
+		price: '$0',
+		plan: SubscriptionPlan.FREE,
+		usage: ['Single User', '1 org with 1 team', '25 app runs per month', '5MB maximum file upload'],
+		features: [
+			'Conversational Chat Apps',
+			{ text: 'File Support', subtext: '(CSV, DOC, TXT, PDF)' },
+			'100MB Vector Storage',
+			'Bring Your Own LLM'
+		]
+	},
+	{
+		name: 'Pro',
+		price: '$99',
+		plan: SubscriptionPlan.PRO,
+		usage: ['All Free Plan +', '1,000 app runs per month', '1GB Vector Storage'],
+		features: [
+			'Process Multi-Agent Apps',
+			{
+				text: 'Data Integration',
+				subtext: '(One Drive, Google Drive, Postgres, HubSpot, Google BigQuery, Airtable, Notion)'
+			},
+			'Deep Data Sync for RAG',
+			'10 Custom Code Tools'
+		]
+	},
+	{
+		name: 'Teams',
+		price: '$199',
+		plan: SubscriptionPlan.TEAMS,
+		usage: ['All Plan Pro +', '10 Users', '10GB Vector Storage', 'Unlimited Sessions'],
+		features: [
+			{ text: 'Embeddable Chat Apps', subtext: '(via HTML iframe)' },
+			'Role-Based Access Controls',
+			'Pro+ Integrations: Sharepoint, Snowflake, Salesforce, Gong, Zendesk, Confluence, and more',
+			'20 Custom Code Tools',
+			'Support Ticketing'
+		]
+	},
+	{
+		name: 'Enterprise',
+		price: '$Custom',
+		plan: SubscriptionPlan.ENTERPRISE,
+		usage: ['All Teams +', 'SSO', 'Data Sync in Minutes', 'Self-Host (On-Prem)'],
+		features: ['Multiple Teams + RBAC', 'Custom Data Connectors', 'Dedicated Support with SLA']
+	}
+];
 
-	const handleDecrement = (key) => {
-		setAddons((prev) => ({
-			...prev,
-			[key]: prev[key] > 0 ? prev[key] - 1 : 0,
-		}));
-	};
+const CheckMarkIcon = () => (
+	<div className='h-3 w-3 rounded-full bg-indigo-600 flex items-center justify-center'>
+		<svg className='h-2.5 w-2.5 text-white' fill='none' stroke='currentColor' viewBox='0 0 24 24'>
+			<path strokeLinecap='round' strokeLinejoin='round' strokeWidth='3' d='M5 13l4 4L19 7' />
+		</svg>
+	</div>
+);
 
-	const renderAddons = (addons) => {
-		return (
-			<div className='space-y-2'>
-				<p>Addons:</p>
-				{addons.users !== null && (
-					<div className='flex flex-row justify-between w-full'>
-						<button onClick={() => handleDecrement('users')} className='bg-gray-300 dark:bg-gray-800 rounded-full w-6 h-6 flex items-center justify-center'>-</button>
-						<span>Extra Team Members: {addons.users}</span>
-						<button onClick={() => handleIncrement('users')} className='bg-gray-300 dark:bg-gray-800 rounded-full w-6 h-6 flex items-center justify-center'>+</button>
-					</div>
-				)}
-				{addons.storage !== null && (
-					<div className='flex flex-row justify-between w-full'>
-						<button onClick={() => handleDecrement('storage')} className='bg-gray-300 dark:bg-gray-800 rounded-full w-6 h-6 flex items-center justify-center'>-</button>
-						<span>Extra GB Vector Storage: {addons.storage}</span>
-						<button onClick={() => handleIncrement('storage')} className='bg-gray-300 dark:bg-gray-800 rounded-full w-6 h-6 flex items-center justify-center'>+</button>
-					</div>
-				)}
-			</div>
-		);
-	};
-
-	return (
-		<div
-			className={`transition-all cursor-pointer w-max min-w-[300px] rounded-lg p-4 borde ${currentPlan ? 'shadow-lg bg-blue-100 border-blue-400 dark:bg-blue-900 border-2' : 'border hover:shadow-lg hover:border-gray-300 hover:bg-gray-100 dark:border-gray-800 dark:hover:border-gray-700 dark:hover:bg-gray-800'}`}
-			// onClick={() => setSelectedPlan(plan)}
-		>
-			{!currentPlan && isPopular && (
-				<span className='px-2 py-[0.5px] bg-yellow-100 text-yellow-800 border border-yellow-300 text-sm rounded-lg'>
-					Most popular
-				</span>
-			)}
-			{currentPlan && (<>
-				<div className='flex items-center'>
-					<span className='px-2 py-[0.5px] me-2 bg-white text-blue-800 border border-blue-300 text-sm rounded-lg'>
-						Current Plan
-					</span>
-				</div>
-				{price > 0 && (
-					<span suppressHydrationWarning className='text-sm px-2 py-[0.5px] me-2 bg-white text-green-800 border border-green-300 text-sm rounded-lg'>
-						Renews {new Date(stripeEndsAt).toDateString()}
-					</span>
-				)}
-			</>)}
-			<div className='flex justify-center align-middle mt-4'>
-				<img className='rounded-md w-24 h-24 lg:w-48 lg:h-48' src={`/images/agentcloud-mark-white-bg-black-${plan}.png`} />
-			</div>
-			<div className='flex items-center mt-4'>
-				<h2 className='text-lg font-semibold'>{title}</h2>
-			</div>
-			<div className='mt-1 min-h-[80px]'>
-				{description}
-				{selectedPlan === plan	//show if current plan
-					&& price > 0		//and not free plan
-					&& plan !== SubscriptionPlan.ENTERPRISE //and not customisable on enterprise
-					&& renderAddons(addons)}
-			</div>
-			<div className='mt-4 flex flex-row'>
-				<span className='text-4xl font-bold'>{numberPrice && '$'}{price}</span>
-				{numberPrice && (
-					<span className='text-sm text-gray-500 flex flex-col ps-1'>
-						<span>per</span>
-						<span>month</span>
-					</span>
-				)}
-			</div>
-			{link ? (
-				<Link
-					className='block text-center w-full bg-indigo-600 text-white px-4 py-2 font-semibold rounded-md mt-2'
-					href={link}
-					rel='noopener noreferrer'
-					target='_blank'
-				>
-					Contact us
-				</Link>
-			) : (
-				<button
-					onClick={() => {
-						const payload = {
-							_csrf: csrf,
-							plan,
-							...addons,
-						};
-						API.getPortalLink(payload, null, toast.error, router);
-					}}
-					className='mt-4 transition-colors flex w-full justify-center rounded-md bg-indigo-600 px-3 py-1.5 text-sm font-semibold leading-6 text-white shadow-sm hover:bg-indigo-500 focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-indigo-600'
-				>
-					{numberPrice ? (stripeCustomerId && currentPlan ? (editedAddons ? 'Update Subscription' : 'Manage Subscription') : 'Subscribe') : 'Contact us'}
-				</button>
-			)}
+const ListItem = ({ text, subtext = null }) => (
+	<li className='flex items-center gap-2'>
+		<CheckMarkIcon />
+		<div className=''>
+			{text}{' '}
+			<span className='innline-block'>
+				{subtext && <span className='text-gray-500'>{subtext}</span>}
+			</span>
 		</div>
-	);
-}
+	</li>
+);
 
 export default function Billing(props) {
-
 	const [accountContext, refreshAccountContext]: any = useAccountContext();
-	const { account, csrf, teamName } = accountContext as any;
-	const { stripeCustomerId, stripePlan } = account?.stripe || {};
+	const { account, csrf } = accountContext as any;
+	const currentOrg = account?.orgs?.find(o => o.id === account?.currentOrg);
+	const { stripeCustomerId, stripePlan, stripeAddons } = currentOrg?.stripe || {};
+	const [selectedPlan, setSelectedPlan] = useState(stripePlan);
 	const router = useRouter();
-	const [state, dispatch] = useState(props);
+	const [_, dispatch] = useState(props);
 	const [error, setError] = useState();
 	const { resourceSlug } = router.query;
+	const [stagedChange, setStagedChange] = useState(null);
+	const [show, setShow] = useState(false);
+	const [showPaymentModal, setShowPaymentModal] = useState(false);
+	const [showConfirmModal, setShowConfirmModal] = useState(false);
+	const [continued, setContinued] = useState(false);
+	const [last4, setLast4] = useState(null);
+	const [missingEnvs, setMissingEnvs] = useState(null);
+	const posthog = usePostHog();
 
-	// TODO: move this to a lib (IF its useful in other files)
-	const stripeMethods = [API.getPortalLink];
-	function createApiCallHandler(apiMethod) {
-		return (e) => {
-			e.preventDefault();
-			apiMethod({
-				_csrf: e.target._csrf.value,
-			}, null, setError, router);
+	function getPayload() {
+		return {
+			_csrf: csrf,
+			plan: selectedPlan,
+			...(stagedChange?.users ? { users: stagedChange.users } : {}),
+			...(stagedChange?.storage ? { storage: stagedChange.storage } : {})
 		};
 	}
-	const [getPaymentLink, getPortalLink] = stripeMethods.map(createApiCallHandler);
 
-	function fetchAccount() {
-		if (resourceSlug) {
-			API.getAccount({ resourceSlug }, dispatch, setError, router);
-		}
+	const stripeMethods = [API.getPortalLink];
+	function createApiCallHandler(apiMethod) {
+		return async e => {
+			e.preventDefault();
+			const res = await apiMethod(
+				{
+					_csrf: getPayload()._csrf
+				},
+				null,
+				toast.error,
+				null
+			);
+			if (res?.url) {
+				window.location.href = res.url;
+			}
+		};
 	}
+	const [getPortalLink] = stripeMethods.map(createApiCallHandler);
 
 	useEffect(() => {
-		fetchAccount();
+		API.checkStripeReady(
+			x => {
+				setMissingEnvs(x.missingEnvs);
+				API.hasPaymentMethod(
+					res => {
+						if (res && res?.ok === true && res?.last4) {
+							setLast4(res?.last4);
+						}
+					},
+					toast.error,
+					router
+				);
+			},
+			toast.error,
+			router
+		);
 	}, [resourceSlug]);
 
-	if (!account) {
+	useEffect(() => {
+		const timeout = setTimeout(() => {
+			refreshAccountContext();
+		}, 500);
+		return () => {
+			clearTimeout(timeout);
+		};
+	}, [showConfirmModal]);
+
+	useEffect(() => {
+		const timeout = setTimeout(() => {
+			setShow(stagedChange != null);
+		}, 500);
+		return () => {
+			clearTimeout(timeout);
+		};
+	}, [stagedChange?.id]);
+
+	if (!account || missingEnvs == null) {
 		return <Spinner />;
 	}
 
-	return (
-		<>
+	if (missingEnvs.length > 0) {
+		return (
+			<ErrorAlert
+				error={`Stripe functionality is missing the following:
+${missingEnvs.join('\n')}`}
+			/>
+		);
+	}
 
+	const payload = getPayload();
+
+	const renderPlanCard = planData => (
+		<Card className='rounded-none border-none shadow-none'>
+			<CardContent className='p-6'>
+				<div className='bg-gradient-to-r from-indigo-600 via-indigo-500 to-purple-600 -skew-x-6 w-fit px-4 py-0 rounded-sm mb-5'>
+					<span className='-skew-x-7 inline-block text-white font-medium'>{planData.name}</span>
+				</div>
+				<div className='mb-4'>
+					<span className='text-3xl font-bold'>{planData.price}</span>
+					{planData.price !== '$Custom' && <span className='text-muted-foreground'>/month</span>}
+				</div>
+				<Button
+					className='w-full bg-gradient-to-r from-indigo-600 via-indigo-600 to-purple-700 hover:bg-indigo-700 mb-6'
+					onClick={() => {
+						setSelectedPlan(planData.plan);
+						setStagedChange({ plan: planData.plan });
+						setShowConfirmModal(true);
+					}}>
+					{account?.stripe.stripePlan === planData.name
+						? 'Update Subscription'
+						: planData.name === 'Enterprise'
+							? 'Contact Us'
+							: 'Change Plan'}
+				</Button>
+
+				<div className='space-y-4'>
+					<h3 className='font-medium'>Usage</h3>
+					<ul className='space-y-2'>
+						{planData.usage.map((item, index) => (
+							<ListItem key={`usage-${index}`} text={item} />
+						))}
+					</ul>
+
+					<h3 className='font-medium pt-2'>Features</h3>
+					<ul className='space-y-2'>
+						{planData.features.map((item, index) => (
+							<ListItem
+								key={`feature-${index}`}
+								text={typeof item === 'string' ? item : item.text}
+								subtext={typeof item === 'string' ? null : item.subtext}
+							/>
+						))}
+					</ul>
+				</div>
+			</CardContent>
+		</Card>
+	);
+
+	return (
+		<div className='p-6'>
 			<Head>
 				<title>Billing</title>
 			</Head>
 
 			{error && <ErrorAlert error={error} />}
 
-			<div className='border-b dark:border-slate-400 pb-2 my-2'>
-				<h3 className='pl-2 font-semibold text-gray-900 dark:text-white'>Manage Subscription</h3>
+			<div className='mb-8'>
+				<h2 className='text-xl font-semibold mb-2'>Manage Your Billing & Subscriptions</h2>
+				<p className='text-muted-foreground mb-4'>
+					View your payment history, manage your subscriptions, or cancel your plan easily through
+					our secure customer portal.
+				</p>
+				<Button
+					variant='outline'
+					className='w-fit text-black hover:bg-gray-100'
+					// onClick={getPortalLink}
+					onClick={() => {
+						window.open('https://billing.stripe.com/p/login/dR6cNudR20gl9JSbII', '_blank');
+					}}>
+					Go to Customer Portal
+				</Button>
 			</div>
 
-			<div className='flex flex-row flex-wrap gap-4 py-4 items-center'>
-				<SubscriptionCard title='Agent Cloud Free' price={0} plan={SubscriptionPlan.FREE} />
-				<SubscriptionCard title='Agent Cloud Pro' price={99} plan={SubscriptionPlan.PRO} />
-				<SubscriptionCard title='Agent Cloud Teams' price={199} isPopular={true} plan={SubscriptionPlan.TEAMS} />
-				<SubscriptionCard title='Agent Cloud Enterprise' price={'Custom'} plan={SubscriptionPlan.ENTERPRISE} link={process.env.NEXT_PUBLIC_HUBSPOT_MEETING_LINK} />
-			</div>
-			{/*<form onSubmit={getPortalLink}>
-				<input type='hidden' name='_csrf' value={csrf} />
-				<div className='mb-2 flex items-center justify-start gap-x-6'>
-					<button
-						type='submit'
-						className='inline-flex justify-center rounded-md bg-indigo-600 px-3 py-2 text-sm font-semibold text-white shadow-sm hover:bg-indigo-500 focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-indigo-600'
-					>
-						Manage subscription
-					</button>
+			<div className='mb-8'>
+				<h2 className='text-xl font-semibold mb-6'>Plan Selection</h2>
+				<div className='grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4'>
+					{pricingPlans.map((plan, index) => renderPlanCard(plan))}
 				</div>
-			</form>
+			</div>
 
-			<pre>{JSON.stringify(account?.stripe, null, '\t')}</pre>*/}
-			
-		</>
+			{/* Modals */}
+			<ConfirmModal
+				open={showConfirmModal}
+				setOpen={setShowConfirmModal}
+				confirmFunction={async () => {
+					const { plan, users, storage } = payload;
+					const posthogBody = {
+						email: account?.email,
+						oldPlan: stripePlan,
+						oldAddons: stripeAddons,
+						newPlan: plan,
+						newAddons: { users, storage }
+					};
+					if (stripePlan === SubscriptionPlan.FREE) {
+						posthog.capture('subscribe', posthogBody);
+					} else if (plan !== stripePlan) {
+						posthog.capture('changePlan', posthogBody);
+					}
+					if (users !== stripeAddons.users || storage !== stripeAddons.storage) {
+						posthog.capture('updateAddons', posthogBody);
+					}
+
+					await API.confirmChangePlan(
+						payload,
+						res => {
+							setTimeout(() => {
+								toast.success('Subscription updated successfully');
+								setStagedChange(null);
+								setShowConfirmModal(false);
+								setShowPaymentModal(false);
+								setShow(false);
+							}, 500);
+						},
+						toast.error,
+						router
+					);
+				}}
+				cancelFunction={async () => {
+					setShowConfirmModal(false);
+					setShowPaymentModal(false);
+					setShow(false);
+					setTimeout(() => setStagedChange(null), 500);
+				}}
+				title='Confirm Subscription Change'
+				message='Are you sure you want to change your subscription? Changes will apply immediately.'
+			/>
+
+			<StripeCheckoutModal
+				showPaymentModal={showPaymentModal}
+				payload={payload}
+				setShow={setShowPaymentModal}
+				setStagedChange={setStagedChange}
+				onComplete={() => {
+					setShowPaymentModal(false);
+					API.hasPaymentMethod(
+						res => {
+							if (res && res?.ok === true && res?.last4) {
+								setLast4(res?.last4);
+							}
+						},
+						toast.error,
+						router
+					);
+					setContinued(true);
+				}}
+			/>
+
+			<Invoice
+				continued={continued}
+				session={stagedChange}
+				show={show}
+				last4={last4}
+				cancelFunction={() => setShow(false)}
+				confirmFunction={async () => {
+					return new Promise((resolve, reject) => {
+						try {
+							API.hasPaymentMethod(
+								res => {
+									if (res && res?.ok === true) {
+										setLast4(res?.last4);
+										setContinued(true);
+										setShowConfirmModal(true);
+									} else if (payload.plan === SubscriptionPlan.FREE) {
+										setContinued(true);
+										setShowConfirmModal(true);
+									} else {
+										resolve(null);
+										setShowPaymentModal(true);
+									}
+								},
+								toast.error,
+								router
+							);
+						} catch (e) {
+							console.error(e);
+							toast.error('Error updating subscription - please contact support');
+							reject(e);
+						}
+					});
+				}}
+			/>
+		</div>
 	);
-
 }
 
-export async function getServerSideProps({ req, res, query, resolvedUrl, locale, locales, defaultLocale }) {
+export async function getServerSideProps({
+	req,
+	res,
+	query,
+	resolvedUrl,
+	locale,
+	locales,
+	defaultLocale
+}) {
 	return JSON.parse(JSON.stringify({ props: res?.locals?.data || {} }));
 }

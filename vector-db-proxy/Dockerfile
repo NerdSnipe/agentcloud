@@ -1,4 +1,4 @@
-FROM rust:1.77.2 as builder
+FROM rust:1.78.0 as builder
 ARG RELEASE
 WORKDIR /usr/local/src/vector-db-proxy
 RUN mkdir -p src
@@ -6,6 +6,8 @@ COPY src/dummy.rs src
 COPY Cargo.toml .
 COPY Cargo.lock .
 RUN sed -i 's#src/main.rs#src/dummy.rs#' Cargo.toml
+
+RUN apt-get update -y && apt-get install -y iputils-ping htop
 
 RUN if [ "$RELEASE" = "true" ] ; then echo "Running Release..." \
 	&& cargo build --release \
@@ -39,8 +41,17 @@ RUN mkdir /onnxruntime \
 # Final Stage (using rust image to be safe so we have important libs like libssl, etc)
 FROM rust:1.77.2
 WORKDIR /app
+# Set arguments
 ARG RELEASE
+ARG UNSTRUCTURED_API_KEY
+ARG UNSTRUCTURED_API_URL
+ARG PINECONE_API_KEY
+# Set ENV variables
 ENV IS_RELEASE=$RELEASE
+ENV UNSTRUCTURED_API_URL=$UNSTRUCTURED_API_URL
+ENV UNSTRUCTURED_API_KEY=$UNSTRUCTURED_API_KEY
+ENV PINECONE_API_KEY=$PINECONE_API_KEY
+# Copy from builder step
 COPY --from=builder /usr/local/src/vector-db-proxy/target/release/vector-db-proxy /app/vector-db-proxy-release
 COPY --from=builder /usr/local/src/vector-db-proxy/target/debug/vector-db-proxy /app/vector-db-proxy-debug
 # Only copy runtime dependencies if necessary

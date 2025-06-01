@@ -2,46 +2,37 @@
 
 import { dynamicResponse } from '@dr';
 import { removeAgentsModel } from 'db/agent';
-import { getCredentialById, getCredentialsById, getCredentialsByTeam } from 'db/credential';
-import { addModel, deleteModelById, getModelById, getModelsByTeam,updateModel } from 'db/model';
+import { addModel, deleteModelById, getModelById, getModelsByTeam, updateModel } from 'db/model';
 import dotenv from 'dotenv';
 import toObjectId from 'misc/toobjectid';
 import { ObjectId } from 'mongodb';
-import { CredentialType } from 'struct/credential';
+import { pricingMatrix } from 'struct/billing';
+import { ModelType, ModelTypeRequirements } from 'struct/model';
 import { ModelEmbeddingLength, ModelList } from 'struct/model';
-import { chainValidations, PARENT_OBJECT_FIELD_NAME, validateField } from 'utils/validationUtils';
+import { chainValidations, PARENT_OBJECT_FIELD_NAME, validateField } from 'utils/validationutils';
 
-import { addCredential, deleteCredentialById } from '../db/credential';
 dotenv.config({ path: '.env' });
 
 export async function modelsData(req, res, _next) {
-	const [models, credentials] = await Promise.all([
-		getModelsByTeam(req.params.resourceSlug),
-		getCredentialsByTeam(req.params.resourceSlug)
-	]);
+	const [models] = await Promise.all([getModelsByTeam(req.params.resourceSlug)]);
 	return {
 		csrf: req.csrfToken(),
-		models,
-		credentials,
+		models
 	};
 }
 
 export async function modelData(req, res, _next) {
-	const [model, credentials] = await Promise.all([
-		getModelById(req.params.resourceSlug, req.params.modelId),
-		getCredentialsByTeam(req.params.resourceSlug),
-	]);
+	const [model] = await Promise.all([getModelById(req.params.resourceSlug, req.params.modelId)]);
 	return {
 		csrf: req.csrfToken(),
-		model,
-		credentials,
+		model
 	};
 }
 
 /**
-* GET /[resourceSlug]/models
-* models page html
-*/
+ * GET /[resourceSlug]/models
+ * models page html
+ */
 export async function modelsPage(app, req, res, next) {
 	const data = await modelsData(req, res, next);
 	res.locals.data = { ...data, account: res.locals.account };
@@ -49,9 +40,12 @@ export async function modelsPage(app, req, res, next) {
 }
 
 /**
-* GET /[resourceSlug]/models.json
-* models json data
-*/
+ * GET /[resourceSlug]/models.json
+ * models json data
+ */
+
+export type ModelsJsonData = Awaited<ReturnType<typeof modelsData>>;
+
 export async function modelsJson(req, res, next) {
 	const data = await modelsData(req, res, next);
 	return res.json({ ...data, account: res.locals.account });
@@ -63,40 +57,52 @@ export async function modelJson(req, res, next) {
 }
 
 /**
-* GET /[resourceSlug]/model/add
-* models add page html
-*/
+ * GET /[resourceSlug]/model/add
+ * models add page html
+ */
 export async function modelAddPage(app, req, res, next) {
 	const data = await modelsData(req, res, next);
 	res.locals.data = { ...data, account: res.locals.account };
 	return app.render(req, res, `/${req.params.resourceSlug}/model/add`);
 }
 
+//need to add checks for stripe plan
 export async function modelAddApi(req, res, next) {
+	let { name, model, config, type } = req.body;
+	let { stripePlan } = res?.locals?.account?.stripe || {};
 
-	let { name, model, credentialId, config, type }  = req.body;
+	let validationError = chainValidations(
+		req.body,
+		[
+			{ field: 'name', validation: { notEmpty: true } },
+			{ field: 'type', validation: { inSet: new Set(Object.values(ModelType)) } },
+			{ field: 'model', validation: { inSet: new Set(ModelList[type as ModelType] || []) } },
+			{ field: 'config.model', validation: { inSet: new Set(ModelList[type as ModelType] || []) } }
+		],
+		{ name: 'Name', model: 'Model', type: 'Type', config: 'Config' }
+	);
 
-	let validationError = chainValidations(req.body, [
-		{ field: 'name', validation: { notEmpty: true }},
-		// { field: 'credentialId', validation: { notEmpty: true, hasLength: 24 }},
-		{ field: 'model', validation: { notEmpty: true }},
-	], { name: 'Name', credentialId: 'Credential', model: 'Model'});
-	if (validationError) {	
+	if (validationError) {
 		return dynamicResponse(req, res, 400, { error: validationError });
 	}
 
-	let credential;
-	if (credentialId && credentialId.length > 0) {
-		// Validate model for credential is valid
-		validationError = await valdiateCredentialModel(req.params.resourceSlug, credentialId, model);
-		if (validationError) {
-			return dynamicResponse(req, res, 400, { error: validationError });
+	if (!stripePlan || !pricingMatrix[stripePlan].llmModels.includes(type)) {
+		return dynamicResponse(req, res, 403, { error: 'This model is not avialable on this plan' });
+	}
+
+	const configValidations = Object.entries(ModelTypeRequirements[type])
+		.filter((en: any) => en[1].optional !== true)
+		.map(en => ({ field: en[0], validation: { notEmpty: true } }));
+
+	if (configValidations.length > 0) {
+		let validationErrorConfig = chainValidations(req.body?.config, configValidations, {});
+		if (validationErrorConfig) {
+			return dynamicResponse(req, res, 400, { error: validationErrorConfig });
 		}
-		// Check for credential
-		credential = await getCredentialById(req.params.resourceSlug, credentialId);
-		if (!credential) {
-			return dynamicResponse(req, res, 400, { error: 'Invalid credential ID' });
-		}
+	}
+
+	if (!stripePlan || !pricingMatrix[stripePlan].llmModels.includes(type)) {
+		return dynamicResponse(req, res, 403, { error: 'This model is not avialable on this plan' });
 	}
 
 	// Insert model to db
@@ -107,26 +113,43 @@ export async function modelAddApi(req, res, next) {
 		model,
 		embeddingLength: ModelEmbeddingLength[model] || 0,
 		modelType: ModelEmbeddingLength[model] ? 'embedding' : 'llm',
-		type: credential?.type || type || CredentialType.FASTEMBED,
-		config: config || {}, //TODO: validation
-		...(credentialId ? { credentialId: toObjectId(credentialId) } : {}),
+		type: type || ModelType.FASTEMBED,
+		config: config || {} //TODO: validation
 	});
 
-	return dynamicResponse(req, res, 302, { _id: addedModel.insertedId, redirect: `/${req.params.resourceSlug}/models` });
-
+	return dynamicResponse(req, res, 302, {
+		_id: addedModel.insertedId,
+		redirect: `/${req.params.resourceSlug}/models`
+	});
 }
 
 export async function editModelApi(req, res, next) {
+	let { name, model, config, type } = req.body;
+	let { stripePlan } = res?.locals?.account?.stripe || {};
 
-	let { name, model, credentialId, config, type }  = req.body;
-
-	let validationError = chainValidations(req.body, [
-		{ field: 'name', validation: { notEmpty: true }},
-		// { field: 'credentialId', validation: { notEmpty: true, hasLength: 24 }},
-		{ field: 'model', validation: { notEmpty: true }},
-	], { name: 'Name', credentialId: 'Credential', model: 'Model'});
-	if (validationError) {	
+	let validationError = chainValidations(
+		req.body,
+		[
+			{ field: 'name', validation: { notEmpty: true } },
+			{ field: 'model', validation: { inSet: new Set(ModelList[type as ModelType] || []) } },
+			{ field: 'config.model', validation: { inSet: new Set(ModelList[type as ModelType] || []) } }
+		],
+		{ name: 'Name', model: 'Model' }
+	);
+	if (validationError) {
 		return dynamicResponse(req, res, 400, { error: validationError });
+	}
+
+	if (!stripePlan || !pricingMatrix[stripePlan]?.llmModels.includes(type)) {
+		return dynamicResponse(req, res, 403, { error: 'This model is not avialable on this plan' });
+	}
+
+	const configValidations = Object.entries(ModelTypeRequirements[type])
+		.filter((en: any) => en[1].optional !== true)
+		.map(en => ({ field: en[0], validation: { notEmpty: true } }));
+	let validationErrorConfig = chainValidations(req.body?.config, configValidations, {});
+	if (validationErrorConfig) {
+		return dynamicResponse(req, res, 400, { error: validationErrorConfig });
 	}
 
 	const update = {
@@ -135,29 +158,13 @@ export async function editModelApi(req, res, next) {
 		config,
 		embeddingLength: ModelEmbeddingLength[model] || 0,
 		modelType: ModelEmbeddingLength[model] ? 'embedding' : 'llm',
+		type: type || ModelType.FASTEMBED
 	};
-
-	let credential;
-	if (credentialId && credentialId.length > 0) {
-		// Validate model for credential is valid
-		validationError = await valdiateCredentialModel(req.params.resourceSlug, credentialId, model);
-		if (validationError) {
-			return dynamicResponse(req, res, 400, { error: validationError });
-		}
-		// Check for credential
-		credential = await getCredentialById(req.params.resourceSlug, credentialId);
-		if (!credential) {
-			return dynamicResponse(req, res, 400, { error: 'Invalid credential ID' });
-		}
-	}
-	update['credentialId'] = credentialId ? toObjectId(credentialId) : null;
-	update['type'] = credential?.type || type || CredentialType.FASTEMBED;
 
 	// Insert model to db
 	const updatedModel = await updateModel(req.params.resourceSlug, req.params.modelId, update);
 
-	return dynamicResponse(req, res, 302, { });
-
+	return dynamicResponse(req, res, 302, {});
 }
 
 /**
@@ -168,8 +175,7 @@ export async function editModelApi(req, res, next) {
  * @apiParam {String} modelId Model id
  */
 export async function deleteModelApi(req, res, next) {
-
-	const { modelId }  = req.body;
+	const { modelId } = req.body;
 
 	if (!modelId || typeof modelId !== 'string' || modelId.length !== 24) {
 		return dynamicResponse(req, res, 400, { error: 'Invalid inputs' });
@@ -182,20 +188,10 @@ export async function deleteModelApi(req, res, next) {
 
 	Promise.all([
 		removeAgentsModel(req.params.resourceSlug, modelId),
-		deleteModelById(req.params.resourceSlug, modelId),
-		model?.type === CredentialType.FASTEMBED ? deleteCredentialById(req.params.resourceSlug, model.credentialId) : void 0, //Delete dumym cred if this is a fastembed model
+		deleteModelById(req.params.resourceSlug, modelId)
 	]);
 
-	return dynamicResponse(req, res, 302, { /*redirect: `/${req.params.resourceSlug}/credentials`*/ });
-
-}
-
-async function valdiateCredentialModel(teamId, credentialId, model) {
-	const credential = await getCredentialById(teamId, credentialId);
-	if (credential) {
-		const allowedModels = ModelList[credential.type];
-		return validateField(model, PARENT_OBJECT_FIELD_NAME, { inSet: allowedModels ? new Set(allowedModels) : undefined /* allows invalid types */, customError: `Model ${model} is not valid for provided credential` }, {});
-	} else {
-		return 'Invalid credential';
-	}
+	return dynamicResponse(req, res, 302, {
+		/*redirect: `/${req.params.resourceSlug}/models`*/
+	});
 }

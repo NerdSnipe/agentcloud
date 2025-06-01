@@ -13,7 +13,10 @@ class BuiltinTools:
         'search_wikidata': WikidataTool,
         'search_duckduckgo': DuckDuckGoSearchTool,
         'search_stackexchange': StackExchangeTool,
-        'search_youtube': YoutubeSearchTool
+        'search_youtube': YoutubeSearchTool,
+        'search_google': SerperGoogleSearchTool,
+        'apify_search_google': ApifyGoogleSearchTool,
+        'firecrawl_loader' : FireCrawlLoader,
     }
 
     @classmethod

@@ -1,12 +1,7 @@
-import Head from 'next/head';
-import Link from 'next/link';
+import { useAccountContext } from 'context/account';
 import { useRouter } from 'next/router';
-import React from 'react';
-
-import { useAccountContext } from '../context/account';
 
 export default function Index() {
-
 	const [accountContext]: any = useAccountContext();
 	const { account } = accountContext as any;
 
@@ -15,13 +10,20 @@ export default function Index() {
 	if (!account) {
 		router.push('/login');
 	} else {
-		router.push('/account');
+		router.push(`/${account.currentTeam}/apps`);
 	}
 
 	return null;
-
 }
 
-export async function getServerSideProps({ req, res, query, resolvedUrl, locale, locales, defaultLocale}) {
+export async function getServerSideProps({
+	req,
+	res,
+	query,
+	resolvedUrl,
+	locale,
+	locales,
+	defaultLocale
+}) {
 	return JSON.parse(JSON.stringify({ props: res?.locals?.data || {} }));
 }

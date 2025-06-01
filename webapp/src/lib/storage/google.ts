@@ -1,27 +1,24 @@
-const { Storage } = require('@google-cloud/storage');
+import { Storage } from '@google-cloud/storage';
 import debug from 'debug';
-import StorageProvider from 'storage/provider';
+
+import StorageProvider from './provider';
 
 const log = debug('webapp:storage:google');
 
 class GoogleStorageProvider extends StorageProvider {
-
-	#storageClient: any; // private property of storageClient
+	#storageClient: any;
 
 	constructor() {
-		super();		
+		super();
 		const options: any = { projectId: process.env.PROJECT_ID };
 		if (process.env.GOOGLE_APPLICATION_CREDENTIALS) {
 			options['keyFilename'] = process.env.GOOGLE_APPLICATION_CREDENTIALS;
-		}
-		if (typeof window !== 'undefined') {
-			log('GoogleStorageProvider options:', options);
 		}
 		this.#storageClient = new Storage(options);
 	}
 
 	async init() {
-		this.createBucket();
+		// this.createBucket();
 	}
 
 	async createBucket(bucketName = process.env.NEXT_PUBLIC_GCS_BUCKET_NAME, options = {}) {
@@ -30,9 +27,9 @@ class GoogleStorageProvider extends StorageProvider {
 				location: process.env.GCS_BUCKET_LOCATION,
 				autoclass: {
 					enabled: true,
-					terminalStorageClass: 'NEARLINE',
+					terminalStorageClass: 'NEARLINE'
 				},
-				...options,
+				...options
 			});
 			log(`GCS Bucket ${bucket.name} created.`);
 			return bucket;
@@ -45,44 +42,111 @@ class GoogleStorageProvider extends StorageProvider {
 		}
 	}
 
-	async addFile(filename, uploadedFile, isPublic = false): Promise<any> {
-		log('Uploading file %s (%s)', uploadedFile.name, filename);
-		return new Promise((resolve, reject) => {
-			const file = this.#storageClient
-				.bucket(process.env.NEXT_PUBLIC_GCS_BUCKET_NAME)
-				.file(filename);
-			const stream = file.createWriteStream({
+	//Note: local file/assets just have an internal buffer, so we can probably remove this and use uploadBuffer everywhere
+	async uploadLocalFile(filename, uploadedFile, contentType, isPublic = false): Promise<any> {
+		log('Uploading file %s', filename);
+		const file = this.#storageClient
+			.bucket(
+				isPublic === true
+					? process.env.NEXT_PUBLIC_GCS_BUCKET_NAME
+					: process.env.NEXT_PUBLIC_GCS_BUCKET_NAME_PRIVATE
+			)
+			.file(filename);
+		try {
+			await file.save(uploadedFile.data, {
 				metadata: {
-					contentType: uploadedFile.mimetype,
-				},
-			});
-			stream.on('error', (err) => {
-				log('File upload error:', err);
-				reject(err);
-			});
-			stream.on('finish', async () => {
-				log('File uploaded successfully.');
-				if (isPublic === true) {
-					await file.makePublic();
+					contentType
 				}
-				resolve(null);
 			});
-			stream.end(uploadedFile.data);
-		});
+			log('File uploaded successfully.');
+			if (isPublic) {
+				await file.makePublic();
+			}
+		} catch (err) {
+			log('File upload error:', err);
+			throw err;
+		}
 	}
 
-	async deleteFile(filename): Promise<any> {
+	async cloneFile(
+		sourceFilename: string,
+		destinationFilename: string,
+		isPublic = false
+	): Promise<any> {
+		log('Cloning file from %s to %s', sourceFilename, destinationFilename);
+		const bucket = this.#storageClient.bucket(
+			isPublic === true
+				? process.env.NEXT_PUBLIC_GCS_BUCKET_NAME
+				: process.env.NEXT_PUBLIC_GCS_BUCKET_NAME_PRIVATE
+		);
+		const sourceFile = bucket.file(sourceFilename);
+		const destinationFile = bucket.file(destinationFilename);
+
+		try {
+			await sourceFile.copy(destinationFile);
+			log('File cloned successfully from %s to %s', sourceFilename, destinationFilename);
+
+			// Optionally make the cloned file public if needed
+			if (isPublic) {
+				await destinationFile.makePublic();
+			}
+
+			return destinationFile;
+		} catch (err) {
+			log('File clone error:', err);
+			throw err;
+		}
+	}
+
+	async uploadBuffer(
+		filename: string,
+		content: Buffer,
+		contentType: string,
+		isPublic = false
+	): Promise<any> {
+		log('Uploading buffer to file %s', filename);
+		const file = this.#storageClient
+			.bucket(
+				isPublic === true
+					? process.env.NEXT_PUBLIC_GCS_BUCKET_NAME
+					: process.env.NEXT_PUBLIC_GCS_BUCKET_NAME_PRIVATE
+			)
+			.file(filename);
+		try {
+			await file.save(content, {
+				metadata: {
+					contentType
+				}
+			});
+			log('Buffer uploaded successfully.');
+			if (isPublic) {
+				await file.makePublic();
+			}
+		} catch (err) {
+			log('Buffer upload error:', err);
+			throw err;
+		}
+	}
+
+	async deleteFile(filename: string, isPublic = false): Promise<any> {
 		log('Deleting file %s', filename);
 		const file = this.#storageClient
-			.bucket(process.env.NEXT_PUBLIC_GCS_BUCKET_NAME)
+			.bucket(
+				isPublic === true
+					? process.env.NEXT_PUBLIC_GCS_BUCKET_NAME
+					: process.env.NEXT_PUBLIC_GCS_BUCKET_NAME_PRIVATE
+			)
 			.file(filename);
 		await file.delete({});
 	}
 
-	getBasePath() {
-		return `https://storage.googleapis.com/${process.env.NEXT_PUBLIC_GCS_BUCKET_NAME}`;
+	getBasePath(isPublic = true) {
+		return `https://storage.googleapis.com/${
+			isPublic
+				? process.env.NEXT_PUBLIC_GCS_BUCKET_NAME
+				: process.env.NEXT_PUBLIC_GCS_BUCKET_NAME_PRIVATE
+		}`;
 	}
-
 }
 
 export default new GoogleStorageProvider();

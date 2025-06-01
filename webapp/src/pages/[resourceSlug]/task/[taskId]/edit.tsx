@@ -5,22 +5,29 @@ import { useAccountContext } from 'context/account';
 import Head from 'next/head';
 import { useRouter } from 'next/router';
 import React, { useEffect, useState } from 'react';
+import { Task } from 'struct/task';
 
 export default function EditTask(props) {
-
 	const [accountContext]: any = useAccountContext();
 	const { account, csrf, teamName } = accountContext as any;
 	const router = useRouter();
 	const { resourceSlug, taskId } = router.query;
 	const [state, dispatch] = useState(props);
 	const [error, setError] = useState();
-	const { task, tools, agents, datasources } = state; // Assuming tasks need tools
+	const { task, tools, agents, tasks, variables } = state; // Assuming tasks need tools
+
+	const taskChoices = tasks?.filter(x => x._id.toString() !== task._id.toString()) || [];
 
 	async function fetchTaskFormData() {
-		await API.getTask({
-			resourceSlug,
-			taskId,
-		}, dispatch, setError, router);
+		await API.getTaskById(
+			{
+				resourceSlug,
+				taskId
+			},
+			dispatch,
+			setError,
+			router
+		);
 	}
 
 	useEffect(() => {
@@ -28,7 +35,7 @@ export default function EditTask(props) {
 	}, [resourceSlug]);
 
 	if (task == null) {
-		return <Spinner/>;
+		return <Spinner />;
 	}
 
 	return (
@@ -46,16 +53,24 @@ export default function EditTask(props) {
 					task={task}
 					tools={tools}
 					agents={agents}
-					datasources={datasources}
 					fetchTaskFormData={fetchTaskFormData}
 					editing={true}
+					taskChoices={taskChoices}
+					variables={variables}
 				/>
 			</span>
-
 		</>
 	);
 }
 
-export async function getServerSideProps({ req, res, query, resolvedUrl, locale, locales, defaultLocale }) {
+export async function getServerSideProps({
+	req,
+	res,
+	query,
+	resolvedUrl,
+	locale,
+	locales,
+	defaultLocale
+}) {
 	return JSON.parse(JSON.stringify({ props: res?.locals?.data || {} }));
 }

@@ -1,4 +1,4 @@
-from typing import Dict, List, Optional, Union, Callable, Annotated, Literal
+from typing import Any, Dict, List, Optional, Union, Callable, Annotated, Literal
 from random import randint
 from pydantic import BaseModel, BeforeValidator, Field, ConfigDict, AliasChoices
 from enum import Enum
@@ -16,7 +16,7 @@ class Process(str, Enum):
 
 
 class ToolType(str, Enum):
-    API_TOOL = "api"
+    BUILTIN_TOOL = "builtin"
     HOSTED_FUNCTION_TOOL = "function",
     RAG_TOOL = "rag",
 
@@ -26,6 +26,11 @@ class Platforms(str, Enum):
     AzureChatOpenAI = "azure"
     FastEmbed = "fastembed"
     Ollama = "ollama"
+    GoogleVertex = "google_vertex"
+    GoogleAI = "google_ai"
+    Cohere = "cohere"
+    Anthropic = "anthropic"
+    Groq = "groq"
 
 
 class ModelVariant(str, Enum):
@@ -33,6 +38,20 @@ class ModelVariant(str, Enum):
     GPT4 = "gpt-4"
     GPT4TURBO = "gpt-4-1106-preview"
     GPT3TURBO = "gpt-3.5-turbo"
+    Gemini_1_Pro = "gemini-1.0-pro"
+    Gemini_1_5_Pro = "gemini-1.5-pro"
+    Gemini_1_5_Flash = "gemini-1.5-flash"
+    CommandRPlus = "command-r-plus"
+    Opus = "claude-3-opus-20240229"
+    Sonnet = "claude-3-sonnet-20240229"
+    Haiku = "claude-3-haiku-20240307"
+    LLaMA3_70b = "llama3-70b-8192"
+    LLaMA3_70b_Tool_Use = "llama3-groq-70b-8192-tool-use-preview"
+    LLaMA3_8b_Tool_Use = "llama3-groq-8b-8192-tool-use-preview"
+    Mixtral_8x7b = "mixtral-8x7b-32768"
+    Llama3_Groq_8b_Tool_Use = "llama3-groq-tool-use"
+    Llama3_Groq_70b_Tool_Use = "llama3-groq-tool-use:70b"
+    Llama_3_1 = "llama3.1"
 
 
 class FastEmbedModelsStandardFormat(str, Enum):
@@ -43,6 +62,7 @@ class FastEmbedModelsStandardFormat(str, Enum):
     FAST_ALL_MINILM_L6_V2 = 'fast-all-MiniLM-L6-v2'
     FAST_MULTILINGUAL_E5_LARGE = 'fast-multilingual-e5-large'
 
+
 class FastEmbedModelsDocFormat(str, Enum):
     FAST_BGE_SMALL_EN = "BAAI/bge-small-en"
     FAST_BGE_SMALL_EN_V15 = "BAAI/bge-small-en-v1.5"
@@ -50,6 +70,7 @@ class FastEmbedModelsDocFormat(str, Enum):
     FAST_BGE_BASE_EN_V15 = "BAAI/bge-base-en-v1.5"
     FAST_ALL_MINILM_L6_V2 = "sentence-transformers/all-MiniLM-L6-v2"
     FAST_MULTILINGUAL_E5_LARGE = "intfloat/multilingual-e5-large"
+
 
 # Models
 class FunctionProperty(BaseModel):
@@ -60,30 +81,34 @@ class FunctionProperty(BaseModel):
 
 class ToolParameters(BaseModel):
     model_config = ConfigDict(extra='ignore')
-    type: str
     properties: Dict[str, FunctionProperty]
     required: List[str]
 
 
 class ToolData(BaseModel):
     name: str
-    code: Optional[str] = None
+    code: Optional[str] = ''
     description: Optional[str] = None
     parameters: Optional[ToolParameters] = None
+    apiKey: Optional[str] = None
     builtin: bool
 
 
 class Retriever(str, Enum):
-    RAW = "raw" # no structured query formatting
+    RAW = "raw"  # no structured query formatting
     SELF_QUERY = "self_query"
     TIME_WEIGHTED = "time_weighted"
     MULTI_QUERY = "multi_query"
 
 
+# TODO: figure out integer vs float vs number
+AllowedLiterals = Literal['string', 'integer', 'float', 'number', 'null']
+
+
 class MetadataFieldInfo(BaseModel):
     name: str
-    description: str
-    type: Literal["string", "integer", "float"]
+    description: Optional[str] = ""
+    type: Union[List[AllowedLiterals], AllowedLiterals]
 
 
 class SelfQueryRetrieverConfig(BaseModel):
@@ -102,9 +127,17 @@ class CombinedRetrieverConfig(SelfQueryRetrieverConfig, TimeWeightedRetrieverCon
     pass
 
 
+class ToolState(str, Enum):
+    PENDING = 'pending'
+    READY = 'ready'
+    ERROR = 'error'
+
+
 class Tool(BaseModel):
     id: Optional[PyObjectId] = Field(alias="_id", default=None)
     model_config = ConfigDict(extra='ignore')
+    functionId: Optional[str] = None
+    state: Optional[ToolState] = None
     name: str
     description: Optional[str] = None
     type: Optional[str] = "function"
@@ -112,18 +145,14 @@ class Tool(BaseModel):
     data: Optional[ToolData] = None
     retriever_type: Optional[Retriever] = Retriever.SELF_QUERY
     retriever_config: Optional[Union[CombinedRetrieverConfig]] = None
+    linkedToolId: Optional[PyObjectId] = None
+    parameters: Optional[Dict[str, str]] = {}
+    ragFilters: Optional[Dict] = None
 
 
 class ApiCredentials(BaseModel):
     api_key: Optional[str] = Field(alias="key")
     base_url: Optional[str] = Field(alias="endpointURL")
-
-
-class Credentials(BaseModel):
-    id: Optional[PyObjectId] = Field(alias="_id", default=None)
-    model_config = ConfigDict(extra='ignore')
-    type: Optional[Platforms] = Field(default=Platforms.ChatOpenAI)
-    credentials: Optional[ApiCredentials] = None
 
 
 class ModelType(str, Enum):
@@ -137,8 +166,6 @@ class Model(BaseModel):
     name: str
     model_name: Optional[str] = Field(default=ModelVariant.GPT4, alias="model")
     modelType: ModelType
-    credentialId: Optional[PyObjectId] = None
-    credentials: Optional[PyObjectId] = None
     embeddingLength: Optional[int] = 384
     seed: Optional[int] = randint(1, 100)
     temperature: Optional[float] = 0
@@ -146,7 +173,7 @@ class Model(BaseModel):
     max_retries: Optional[int] = 10
     stream: Optional[bool] = True
     type: Optional[Platforms] = None
-    config: Optional[Dict] = None
+    config: Optional[Dict] = Field(default={})
 
 
 class ChatModel(BaseModel):
@@ -155,7 +182,7 @@ class ChatModel(BaseModel):
     api_key: Optional[str] = None
     model_name: Optional[ModelVariant] = Field(default=ModelVariant.GPT4, alias="model")
     seed: Optional[int] = randint(1, 100)
-    temperature: Optional[float] = 0
+    wtemperature: Optional[float] = 0
     timeout: Optional[int] = 300
     max_retries: Optional[int] = 10
     stream: Optional[bool] = True
@@ -185,18 +212,22 @@ class Task(BaseModel):
     toolIds: Optional[List[PyObjectId]] = None
     tools: Optional[Tool] = None
     asyncExecution: Optional[bool] = False
-    context: Optional[str] = None
+    context: Optional[List[PyObjectId]] = None
     outputJSON: Optional[BaseModel] = None
     outputPydantic: Optional[BaseModel] = None
     outputFile: Optional[str] = None
     callback: Optional[Callable] = None
     requiresHumanInput: bool = False
+    displayOnlyFinalOutput: bool = False
+    storeTaskOutput: bool = False
+    taskOutputFileName: Optional[str] = ''
+    isStructuredOutput: Optional[bool] = False
+    taskOutputVariableName: Optional[str] = None
 
 
 class Agent(BaseModel):
     id: Optional[PyObjectId] = Field(alias="_id", default=None)
     model_config = ConfigDict(extra='ignore')
-    """Data model for Autogen Agent Config"""
     name: str
     role: str
     goal: str
@@ -211,7 +242,7 @@ class Agent(BaseModel):
     maxIter: Optional[int] = 10
     maxRPM: Optional[int] = 100
     verbose: Optional[bool] = False
-    allowDelegation: Optional[bool] = True
+    allowDelegation: Optional[bool] = Field(default=False, alias="allow_delegation")
     step_callback: Optional[Callable] = None
 
 
@@ -221,24 +252,36 @@ class Crew(BaseModel):
     tasks: Optional[List[PyObjectId]] = None
     agents: Optional[List[PyObjectId]] = None
     process: Optional[Process] = Process.Sequential
-    managerLLM: Optional[Model] = None
+    managerModelId: Optional[PyObjectId] = None
     functionCallingLLM: Optional[Callable] = None
-    verbose: Optional[bool] = False
+    verbose: Optional[Union[int, bool]] = False
     memory: Optional[bool] = False
     cache: Optional[bool] = False
     config: Optional[Dict] = {}
     maxRPM: Optional[int] = None
     language: Optional[str] = "en"
     fullOutput: Optional[bool] = False
+    full_output: Optional[bool] = Field(alias="fullOutput", default=False)
     stepCallback: Optional[Callable] = None
     shareCrew: Optional[bool] = False
     modelId: Optional[PyObjectId] = Field(alias="managerModelId", default=None)
 
 
 class Session(BaseModel):
+    id: PyObjectId = Field(alias="_id", default=None)
+    appId: PyObjectId = None
+    variables: Optional[Dict[str, str]] = None
+
+class VectorDb(BaseModel):
     id: Optional[PyObjectId] = Field(alias="_id", default=None)
-    model_config = ConfigDict(extra='ignore')
-    crewId: Crew
+    orgId: Optional[PyObjectId] = Field(default=None)
+    teamId: Optional[PyObjectId] = Field(default=None)
+    apiKey: Optional[str] = None
+    url: Optional[str] = None
+    name: str
+    type: str
+
+
 
 
 class Datasource(BaseModel):
@@ -254,13 +297,33 @@ class Datasource(BaseModel):
     workspaceId: PyObjectId
     connectionId: PyObjectId
     destinationId: PyObjectId
+    collectionName: Optional[str] = None
+    namespace: Optional[str] = None
+    byoVectorDb: Optional[bool] = None
+    vectorDbId: Optional[PyObjectId] = None
+    vector_db: Optional[VectorDb] = None
+    region: Optional[str] = None
+    
 
 class AppType(str, Enum):
     CHAT = "chat"
     PROCESS = "process"
 
 
+class ChatAppConfig(BaseModel):
+    agentId: PyObjectId
+    conversationStarters: list[str] = Field(default_factory=list)
+    maxMessages: int = Field(default=30)
+
+
+class Variable(BaseModel):
+    id: Optional[PyObjectId] = Field(alias="_id", default=None)
+    name: str
+    value: str
+
+
 class App(BaseModel):
     id: Optional[PyObjectId] = Field(alias="_id", default=None)
     appType: Optional[AppType] = Field(default=None)
     crewId: Optional[PyObjectId] = Field(default=None)
+    chatAppConfig: Optional[ChatAppConfig] = None

@@ -1,21 +1,30 @@
 import Head from 'next/head';
 import Link from 'next/link';
 import { useRouter } from 'next/router';
+import { usePostHog } from 'posthog-js/react';
 import { useState } from 'react';
 
 import * as API from '../api';
 import ErrorAlert from '../components/ErrorAlert';
 
 export default function RequestChangePassword() {
-
 	const router = useRouter();
 	const [error, setError] = useState();
-
+	const posthog = usePostHog();
 	async function requestChangePassword(e) {
 		e.preventDefault();
-		await API.requestChangePassword({
-			email: e.target.email.value,
-		}, null, setError, router);
+		const email = e.target.email.value;
+		posthog.capture('requestChangePassword', {
+			email
+		});
+		await API.requestChangePassword(
+			{
+				email
+			},
+			null,
+			setError,
+			router
+		);
 	}
 
 	return (
@@ -23,8 +32,6 @@ export default function RequestChangePassword() {
 			<Head>
 				<title>Request Password Reset</title>
 			</Head>
-
-			{error && <ErrorAlert error={error} />}
 
 			<div className='flex min-h-full flex-1 flex-col justify-center py-12 sm:px-6 lg:px-8'>
 				<div className='sm:mx-auto sm:w-full sm:max-w-md'>
@@ -36,16 +43,24 @@ export default function RequestChangePassword() {
 						width={128}
 					/>
 					<h2 className='mt-6 text-center text-2xl font-bold leading-9 tracking-tight text-gray-900'>
-            			Forgot password?
+						Forgot password?
 					</h2>
 				</div>
 
 				<div className='mt-10 sm:mx-auto sm:w-full sm:max-w-[480px]'>
 					<div className='bg-white dark:bg-slate-800 px-6 py-12 shadow sm:rounded-lg sm:px-12'>
-						<form className='space-y-6' onSubmit={requestChangePassword} action='/forms/requestchangepassword' method='POST'>
+						<form
+							className='space-y-6'
+							onSubmit={requestChangePassword}
+							action='/forms/requestchangepassword'
+							method='POST'
+						>
 							<div>
-								<label htmlFor='email' className='block text-sm font-medium leading-6 text-gray-900 dark:text-slate-400'>
-                  					Email Address
+								<label
+									htmlFor='email'
+									className='block text-sm font-medium leading-6 text-gray-900 dark:text-slate-400'
+								>
+									Email Address
 								</label>
 								<div className='mt-2'>
 									<input
@@ -64,26 +79,25 @@ export default function RequestChangePassword() {
 									type='submit'
 									className='flex w-full justify-center rounded-md bg-indigo-600 px-3 py-1.5 text-sm font-semibold leading-6 text-white shadow-sm hover:bg-indigo-500 focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-indigo-600'
 								>
-                  					Request password reset
+									Request password reset
 								</button>
 							</div>
 
 							{error && <ErrorAlert error={error} />}
-
 						</form>
-
 					</div>
 
 					<p className='mt-10 text-center text-sm text-gray-500'>
-            			Remembered your password?{' '}
-						<Link href='/register' className='font-semibold leading-6 text-indigo-600 hover:text-indigo-500'>
-              				Sign in
+						Remembered your password?{' '}
+						<Link
+							href='/login'
+							className='font-semibold leading-6 text-indigo-600 hover:text-indigo-500'
+						>
+							Sign in
 						</Link>
 					</p>
 				</div>
 			</div>
-
 		</>
 	);
-
 }

@@ -14,14 +14,15 @@ if (typeof fs?.mkdir === 'function') {
 }
 
 class LocalStorageProvider extends StorageProvider {
-
 	static allowedDeleteErorCodes: string[] = ['ENOENT'];
 
 	#basePath: string;
 
 	constructor() {
 		super();
-		if (typeof fs?.mkdir !== 'function') { return; }
+		if (typeof fs?.mkdir !== 'function') {
+			return;
+		}
 		this.#basePath = process.env.UPLOADS_BASE_PATH || './uploads';
 		this.init();
 	}
@@ -35,7 +36,7 @@ class LocalStorageProvider extends StorageProvider {
 		}
 	}
 
-	async addFile(filename, uploadedFile, isPublic = false) {
+	async uploadLocalFile(filename, uploadedFile, contentType, isPublic = false) {
 		const filePath = path.join(this.#basePath, filename);
 		try {
 			await writeFile(filePath, uploadedFile.data);
@@ -43,6 +44,42 @@ class LocalStorageProvider extends StorageProvider {
 		} catch (e) {
 			log(`Failed to upload file: ${e.message}`);
 			throw e;
+		}
+	}
+
+	async uploadBuffer(
+		filename: string,
+		content: Buffer,
+		contentType: string,
+		isPublic = false
+	): Promise<any> {
+		const filePath = path.join(this.#basePath, filename);
+		try {
+			await writeFile(filePath, content);
+			log(`Buffer uploaded to '${filename}' successfully.`);
+		} catch (e) {
+			log(`Failed to upload buffer: ${e.message}`);
+			throw e;
+		}
+	}
+
+	async cloneFile(sourceFilename: string, destinationFilename: string): Promise<any> {
+		const sourceFilePath = path.join(this.#basePath, sourceFilename);
+		const destinationFilePath = path.join(this.#basePath, destinationFilename);
+
+		try {
+			// Read the source file
+			const fileContent = await util.promisify(fs.readFile)(sourceFilePath);
+
+			// Write the content to the destination file
+			await writeFile(destinationFilePath, fileContent);
+
+			log(`File cloned successfully from '${sourceFilename}' to '${destinationFilename}'`);
+
+			return destinationFilePath;
+		} catch (err) {
+			log(`Failed to clone file: ${err.message}`);
+			throw err;
 		}
 	}
 
@@ -62,8 +99,6 @@ class LocalStorageProvider extends StorageProvider {
 	getBasePath() {
 		return '/static';
 	}
-
 }
 
 export default new LocalStorageProvider();
-

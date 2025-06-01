@@ -13,7 +13,7 @@
     "noEmit": true,
     "incremental": true,
     "esModuleInterop": true,
-    "module": "esnext",
+    "module": "ESNext",
     "moduleResolution": "node",
     "resolveJsonModule": true,
     "isolatedModules": true,
@@ -45,6 +45,9 @@
       "misc/*": [
         "lib/misc/*"
       ],
+      "function/*": [
+        "lib/function/*"
+      ],
       "queue/*": [
         "lib/queue/*"
       ],
@@ -69,6 +72,9 @@
       "styles/*": [
         "lib/styles/*"
       ],
+      "db/*": [
+        "db/*"
+      ],
       "lib/*": [
         "lib/*"
       ],
@@ -86,8 +92,17 @@
       ],
       "secret/*": [
         "lib/secret/*"
+      ],
+      "modules/*": [
+        "modules/*"
+      ],
+      "store/*": [
+        "store/*"
+      ],
+      "data/*": [
+        "data/*"
       ]
-    },
+    }
   },
   "include": [
     "next-env.d.ts",
@@ -95,6 +110,8 @@
     "**/*.tsx"
   ],
   "exclude": [
-    "node_modules"
-  ]
+    "node_modules",
+    "src/test"
+  ],
+  "types": ["@types/jest"]
 }

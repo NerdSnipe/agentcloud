@@ -1,8 +1,10 @@
 {
   "extends": "./tsconfig.json",
   "compilerOptions": {
+    "incremental": true,
     "esModuleInterop": true,
     "module": "commonjs",
+    "jsx":"react",
     "outDir": "dist",
     "noEmit": false,
     "baseUrl": "./src",
@@ -27,6 +29,9 @@
       ],
       "middleware/*": [
         "lib/middleware/*"
+      ],
+      "function/*": [
+        "lib/function/*"
       ],
       "misc/*": [
         "lib/misc/*"
@@ -58,6 +63,9 @@
       "utils/*": [
         "lib/utils/*"
       ],
+      "db/*": [
+        "db/*"
+      ],
       "lib/*": [
         "lib/*"
       ],
@@ -85,5 +93,6 @@
   "ts-node": {
     "esm": false,
     "experimentalSpecifierResolution": "node",
-  }
+  },
+  "types": ["@types/jest"]
 }

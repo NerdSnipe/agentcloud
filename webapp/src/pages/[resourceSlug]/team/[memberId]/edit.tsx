@@ -1,4 +1,5 @@
 import * as API from '@api';
+import { ChevronRightIcon } from '@heroicons/react/20/solid';
 import Permission from '@permission';
 import ErrorAlert from 'components/ErrorAlert';
 import PermissionsEditor from 'components/PermissionsEditor';
@@ -6,15 +7,12 @@ import Spinner from 'components/Spinner';
 import { useAccountContext } from 'context/account';
 import Head from 'next/head';
 import { useRouter } from 'next/router';
-import Permissions from 'permissions/permissions';
-import Roles from 'permissions/roles';
+import { TEAM_BITS } from 'permissions/bits';
 import React, { useEffect, useState } from 'react';
-import { toast } from 'react-toastify';
 
 export default function EditTeamMember(props) {
-
-	const [accountContext, refreshAccountContext]: any = useAccountContext();
-	const { account, team, csrf, teamName } = accountContext as any;
+	const [accountContext]: any = useAccountContext();
+	const { account } = accountContext as any;
 	const router = useRouter();
 	const [state, dispatch] = useState(props);
 	const [error, setError] = useState();
@@ -33,11 +31,8 @@ export default function EditTeamMember(props) {
 		return <Spinner />;
 	}
 
-	const { stripeCustomerId, stripeEndsAt, stripeCancelled } = account?.stripe || {};
-
 	return (
 		<>
-
 			<Head>
 				<title>Edit Team Member</title>
 			</Head>
@@ -45,16 +40,37 @@ export default function EditTeamMember(props) {
 			{error && <ErrorAlert error={error} />}
 
 			<div className='border-b dark:border-slate-400 pb-2 my-2'>
-				<h3 className='pl-2 font-semibold text-gray-900 dark:text-white'>Edit Team Member</h3>
+				<h3 className='pl-2 text-sm font-medium text-gray-500 dark:text-white align-middle'>
+					<span
+						onClick={() => router.push(`/${resourceSlug}/team`)}
+						className='cursor-pointer text-gray-600 hover:text-blue-600'
+					>
+						Team
+					</span>
+					<ChevronRightIcon className='inline-block w-4 h-4 mx-1 mb-1' />
+					Edit Team Member
+				</h3>
 			</div>
 
-			<PermissionsEditor editingPermission={new Permission(teamMember?.permissions)} />
-
+			<PermissionsEditor
+				editingPermission={new Permission(teamMember?.permissions)}
+				filterBits={TEAM_BITS}
+				memberName={teamMember?.name}
+				memberEmail={teamMember?.email}
+				initialRole={teamMember?.role}
+			/>
 		</>
 	);
-
 }
 
-export async function getServerSideProps({ req, res, query, resolvedUrl, locale, locales, defaultLocale }) {
+export async function getServerSideProps({
+	req,
+	res,
+	query,
+	resolvedUrl,
+	locale,
+	locales,
+	defaultLocale
+}) {
 	return JSON.parse(JSON.stringify({ props: res?.locals?.data || {} }));
 }

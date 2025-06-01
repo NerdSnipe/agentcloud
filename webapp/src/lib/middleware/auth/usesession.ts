@@ -5,8 +5,7 @@ dotenv.config({ path: '.env' });
 
 import RedisStore from 'connect-redis';
 import session from 'express-session';
-
-import { client as redisClient } from '../../redis/redis';
+import { client as redisClient } from 'redis/redis';
 const dev = process.env.NODE_ENV !== 'production';
 
 const sessionStore = session({
@@ -21,8 +20,8 @@ const sessionStore = session({
 	cookie: {
 		httpOnly: true,
 		secure: false, //TODO: check https
-		sameSite: 'strict',
-		maxAge: 1000 * 60 * 60 * 24 * 30, //1 month
+		sameSite: 'lax',
+		maxAge: 1000 * 60 * 60 * 24 * 30 //1 month
 	}
 });
 

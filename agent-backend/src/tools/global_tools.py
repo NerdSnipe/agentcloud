@@ -10,7 +10,7 @@ from socketio import SimpleClient
 
 from messaging.send_message_to_socket import send
 from models.sockets import SocketEvents, SocketMessage, Message
-from pydantic import BaseModel, Field
+from pydantic.v1 import BaseModel, Field
 from abc import ABC, abstractmethod
 from models.mongo import Tool, Datasource, Model
 
@@ -30,36 +30,19 @@ class CustomHumanInput(BaseTool):
     args_schema: Type[BaseModel] = HumanInputParams
     session_id: str = None
     socket_client: SimpleClient = None
+    author_name: Optional[str] = Field(default="System")
 
-    def __init__(self, socket_client: SimpleClient, session_id: str, **kwargs: Any):
+    def __init__(self, socket_client: SimpleClient, session_id: str, author_name: str = "System", **kwargs: Any):
         super().__init__(**kwargs)
         self.session_id = session_id
         self.socket_client = socket_client
+        self.author_name = author_name
+
+    def __hash__(self):
+        return id(self)
 
     @staticmethod
     def extract_message(text):
-        try:
-            #NOTE: testing
-            return text
-            
-            if isinstance(text, str) and text.startswith('{'):
-                text_json = json.loads(text)
-                if len(text_json) > 1:
-                    return json.dumps(text_json)  # return the stringified JSON object
-                return next((value for value in text_json.values() if value is not None), None)
-        except Exception as e:
-            if text.startswith('{'):
-                if not text.endswith('"}'):
-                    text += '"}'
-                elif not text.endswith('}'):
-                    text += '}'
-            try:
-                text_json = json.loads(text)
-                if len(text_json) > 1:
-                    return json.dumps(text_json)  # return the stringified JSON object
-                return next((value for value in text_json.values() if value is not None), None)
-            except Exception as ex:
-                logging.exception(ex)
         return text
 
     def _run(
@@ -91,7 +74,7 @@ class CustomHumanInput(BaseTool):
                 SocketEvents.MESSAGE,
                 SocketMessage(
                     room=self.session_id,
-                    authorName="system",
+                    authorName=self.author_name,
                     message=Message(
                         chunkId=str(uuid4()),
                         text=CustomHumanInput.extract_message(text),
@@ -125,7 +108,7 @@ class GlobalBaseTool(BaseTool, ABC):
     @classmethod
     @abstractmethod
     def factory(cls, tool: Tool, datasources: List[Datasource], models: List[Tuple[Any, Model]], **kwargs) -> BaseTool:
-        """ 
+        """
             cls: class type instance - tells you what class was is calling this class-level method
             tool: tool model. Need to copy or extract mandatory BaseTool fields such as name, description, args_schema
             datasources: datasource mongo object. Used to instantiate datasources such as Vector DB
@@ -133,6 +116,9 @@ class GlobalBaseTool(BaseTool, ABC):
             kwargs: other arguments. future proofing method for when we need to pass other mongo model data or app/team configuration to the tool
         """
         pass
+
+    def __hash__(self):
+        return id(self)
 
 
 class openapi_request:

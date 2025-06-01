@@ -1,6 +1,7 @@
 import logging
 import os
 import threading
+from models.vectordatabase import VectorDatabase
 
 from dotenv import load_dotenv
 
@@ -15,10 +16,21 @@ MONGO_DB_NAME = os.getenv("MONGO_DB_NAME", "test")
 AGENT_BACKEND_SOCKET_TOKEN = os.getenv("AGENT_BACKEND_SOCKET_TOKEN")
 DB_URL = os.getenv("DB_URL")
 MAX_RETRIES = os.getenv("MAX_RETRIES", 10)
-QDRANT_HOST = os.getenv("QDRANT_HOST", "localhost")
+QDRANT_HOSTNAME = os.getenv("QDRANT_HOST", "localhost")
+QDRANT_PORT = os.getenv("QDRANT_PORT", "6333")
+QDRANT_HOST = f"{QDRANT_HOSTNAME}:{QDRANT_PORT}"
+QDRANT_API_KEY = os.getenv("QDRANT_API_KEY")
 REDIS_HOST = os.getenv("REDIS_HOST")
 REDIS_PORT = 6379
-
+LOG_LEVEL = os.getenv("LOG_LEVEL", "INFO")
+GOOGLE_FUNCTION_LOCATION = os.getenv("GOOGLE_FUNCTION_LOCATION", "us-central1")
+PROJECT_ID = os.getenv("PROJECT_ID")
+GCS_BUCKET_NAME = os.getenv("GCS_BUCKET_NAME")
+GCS_BUCKET_NAME_PRIVATE = os.getenv("GCS_BUCKET_NAME_PRIVATE")
+UPLOADS_BASE_PATH = os.getenv("UPLOADS_BASE_PATH")
+PINECONE_API_KEY = os.getenv("PINECONE_API_KEY")
+VECTOR_DATABASE = os.getenv("VECTOR_DATABASE", VectorDatabase.Qdrant)
+HOSTED_PINECONE_API_KEY = os.getenv("HOSTED_PINECONE_API_KEY")
 
 def _set_max_threads() -> int:
     try:

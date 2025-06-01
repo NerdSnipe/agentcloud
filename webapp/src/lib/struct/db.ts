@@ -3,7 +3,7 @@ import { ObjectId } from 'mongodb';
 export type InsertResult = {
 	acknowledged?: boolean;
 	insertedId?: ObjectId;
-}
+};
 
 export enum CollectionName {
 	Accounts = 'accounts',
@@ -11,7 +11,6 @@ export enum CollectionName {
 	Apps = 'apps',
 	Chat = 'chat',
 	CheckoutSessions = 'checkoutsessions',
-	Credentials = 'credentials',
 	Crews = 'crews',
 	Datasources = 'datasources',
 	Version = 'version',
@@ -24,5 +23,9 @@ export enum CollectionName {
 	Tasks = 'tasks',
 	Teams = 'teams',
 	Tools = 'tools',
-	Verifications = 'verifications'
+	Toolrevisions = 'toolrevisions',
+	Verifications = 'verifications',
+	ShareLinks = 'sharelinks',
+	APIKeys = 'apikeys',
+	Checkpoints = 'checkpoints'
 }

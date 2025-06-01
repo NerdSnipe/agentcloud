@@ -1,65 +1,69 @@
 import * as API from '@api';
-import { Dialog, Transition } from '@headlessui/react';
 import CreateDatasourceForm from 'components/CreateDatasourceForm'; // Assuming this component is similar to ModelForm but for datasources
 import { useAccountContext } from 'context/account';
+import FormContext from 'context/connectorform';
+import { Dialog, DialogContent, DialogTitle } from 'modules/components/ui/dialog';
 import { useRouter } from 'next/router';
 import { Fragment, useEffect, useState } from 'react';
+import { toast } from 'react-toastify';
 
-export default function CreateDatasourceModal({ open, setOpen, callback }) {
+export default function CreateDatasourceModal({ open, setOpen, callback, initialStep }) {
 	const [accountContext]: any = useAccountContext();
-	const { account, csrf } = accountContext as any;
 	const router = useRouter();
 	const { resourceSlug } = router.query;
 	const [state, dispatch] = useState({});
-	const [error, setError] = useState();
+	const [vectorDbState, setVectorDbState] = useState(null);
 	const { models } = state as any;
+	const vectorDbs = vectorDbState?.vectorDbs || [];
+	const [forceClose, setForceClose] = useState(false);
+	const [spec, setSpec] = useState(null);
 
 	async function fetchDatasourceFormData() {
-		await API.getModels({ resourceSlug }, dispatch, setError, router);
+		await API.getModels({ resourceSlug }, dispatch, toast.error, router);
+		await API.getVectorDbs({ resourceSlug }, setVectorDbState, toast.error, router);
 	}
 
 	useEffect(() => {
 		fetchDatasourceFormData();
 	}, []);
 
-	return (
-		<Transition.Root show={open} as={Fragment}>
-			<Dialog as='div' className='relative z-50' onClose={setOpen}>
-				<Transition.Child
-					as={Fragment}
-					enter='ease-out duration-300'
-					enterFrom='opacity-0'
-					enterTo='opacity-100'
-					leave='ease-in duration-200'
-					leaveFrom='opacity-100'
-					leaveTo='opacity-0'
-				>
-					<div className='fixed inset-0 bg-gray-500 bg-opacity-75 transition-opacity' />
-				</Transition.Child>
+	// const handleOnClose = () => {
+	// 	if (!spec) {
+	// 		setOpen(false);
+	// 	} else {
+	// 		setForceClose(!forceClose);
+	// 	}
+	// };
 
-				<div className='fixed inset-0 z-10 overflow-y-auto w-full'>
-					<div className='flex min-h-full items-end justify-center p-3 text-center sm:items-center sm:p-0 w-full'>
-						<Transition.Child
-							as={Fragment}
-							enter='ease-out duration-300'
-							enterFrom='opacity-0 translate-y-4 sm:translate-y-0 sm:scale-95'
-							enterTo='opacity-100 translate-y-0 sm:scale-100'
-							leave='ease-in duration-200'
-							leaveFrom='opacity-100 translate-y-0 sm:scale-100'
-							leaveTo='opacity-0 translate-y-4 sm:translate-y-0 sm:scale-95'
-						>
-							<Dialog.Panel className='relative transform rounded-lg bg-white px-3 pb-2 pt-4 text-left shadow-xl transition-all sm:my-8 sm:p-6 md:w-full lg:w-1/2 m-10'>
-								<Dialog.Title as='h3' className='text-lg font-medium text-gray-900'>
-								Create a Datasource
-								</Dialog.Title>
-								<div className='pt-4'>
-									<CreateDatasourceForm compact={true} callback={callback} models={models} fetchDatasourceFormData={fetchDatasourceFormData} initialStep={2} />
-								</div>
-							</Dialog.Panel>
-						</Transition.Child>
-					</div>
+	// const closeConfirmModal = () => {
+	// 	setForceClose(false);
+	// };
+
+	// const onConfirmClose = () => {
+	// 	setOpen(!open);
+	// 	setForceClose(false);
+	// 	setSpec(null);
+	// };
+
+	return (
+		<Dialog open={open} onOpenChange={setOpen}>
+			<DialogContent>
+				<DialogTitle className='text-lg font-medium text-gray-900 dark:text-white'>
+					Create a Datasource
+				</DialogTitle>
+				<div className='pt-4'>
+					<CreateDatasourceForm
+						compact={true}
+						callback={callback}
+						models={models}
+						spec={spec}
+						setSpec={setSpec}
+						fetchDatasourceFormData={fetchDatasourceFormData}
+						initialStep={initialStep}
+						vectorDbs={vectorDbs}
+					/>
 				</div>
-			</Dialog>
-		</Transition.Root>
+			</DialogContent>
+		</Dialog>
 	);
 }
